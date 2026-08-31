@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-gray-800 bg-gray-900/80 p-6 shadow-lg backdrop-blur-sm transition-all hover:border-gray-700 hover:shadow-xl;
+  }
+
+  .card-hover {
+    @apply card hover:scale-[1.01] hover:bg-gray-900;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-blue {
+    @apply badge bg-blue-500/10 text-blue-400 border border-blue-500/20;
+  }
+
+  .badge-green {
+    @apply badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
+  }
+
+  .badge-purple {
+    @apply badge bg-purple-500/10 text-purple-400 border border-purple-500/20;
+  }
+
+  .badge-amber {
+    @apply badge bg-amber-500/10 text-amber-400 border border-amber-500/20;
+  }
+
+  .badge-gray {
+    @apply badge bg-gray-500/10 text-gray-400 border border-gray-500/20;
+  }
+
+  .badge-pink {
+    @apply badge bg-pink-500/10 text-pink-400 border border-pink-500/20;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent;
+  }
+
+  .glow {
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.15), 0 0 80px rgba(147, 51, 234, 0.1);
+  }
+
+  .input-dark {
+    @apply w-full px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-gray-100 placeholder-gray-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all outline-none;
+  }
+
+  .btn-primary {
+    @apply px-5 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-500/20;
+  }
+
+  .btn-secondary {
+    @apply px-5 py-2.5 border border-gray-700 text-gray-300 rounded-xl font-medium hover:bg-gray-800 hover:text-white transition-all;
+  }
+}
