@@ -25,11 +25,14 @@ interface AdminTool {
   createdAt: string;
 }
 
+const ADMIN_KEY_STORAGE = "aitools_admin_key";
+
 export default function AdminPage() {
   const [adminKey, setAdminKey] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [tools, setTools] = useState<AdminTool[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
 
   // Add tool form
   const [toolName, setToolName] = useState("");
@@ -50,11 +53,41 @@ export default function AdminPage() {
     Authorization: `Bearer ${adminKey}`,
   };
 
+  // Restore session on mount (survives navigation to tool pages and back)
+  useEffect(() => {
+    const stored = sessionStorage.getItem(ADMIN_KEY_STORAGE);
+    if (!stored) {
+      setIsRestoring(false);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/tools", {
+          headers: { Authorization: `Bearer ${stored}` },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          setAdminKey(stored);
+          setIsAuthenticated(true);
+          const data = await res.json();
+          setTools(data.tools || []);
+        } else {
+          sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+        }
+      } catch {
+        // ignore — user can log in manually
+      } finally {
+        setIsRestoring(false);
+      }
+    })();
+  }, []);
+
   const login = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/admin/tools", { headers: authHeaders });
+      const res = await fetch("/api/admin/tools", { headers: authHeaders, cache: "no-store" });
       if (res.ok) {
+        sessionStorage.setItem(ADMIN_KEY_STORAGE, adminKey);
         setIsAuthenticated(true);
         const data = await res.json();
         setTools(data.tools || []);
@@ -162,6 +195,16 @@ export default function AdminPage() {
     fetchTools();
   };
 
+  // While restoring the session from storage, show a neutral loading state
+  // so we don't flash the login screen after navigating back from a tool page.
+  if (isRestoring) {
+    return (
+      <main className="min-h-screen bg-gray-50/50 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+      </main>
+    );
+  }
+
   // Login screen
   if (!isAuthenticated) {
     return (
@@ -208,12 +251,24 @@ export default function AdminPage() {
               {tools.length} tools in directory
             </p>
           </div>
-          <Link
-            href="/"
-            className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            &larr; Back to site
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              &larr; Back to site
+            </Link>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+                setIsAuthenticated(false);
+                setAdminKey("");
+              }}
+              className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
