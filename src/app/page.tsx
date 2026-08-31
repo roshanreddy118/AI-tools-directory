@@ -37,7 +37,7 @@ export default function HomePage() {
   const [hasSearched, setHasSearched] = useState(false);
 
   useEffect(() => {
-    fetch("/api/stats")
+    fetch("/api/stats", { cache: "no-store" })
       .then((r) => r.json())
       .then(setStats)
       .catch(console.error);
@@ -51,7 +51,7 @@ export default function HomePage() {
       if (selectedPricing) params.set("pricing", selectedPricing);
       params.set("limit", "30");
 
-      const response = await fetch(`/api/tools?${params}`);
+      const response = await fetch(`/api/tools?${params}`, { cache: "no-store" });
       const data = await response.json();
       setTools(data.tools || []);
       setHasSearched(true);
@@ -87,7 +87,7 @@ export default function HomePage() {
         if (selectedCategory) params.set("category", selectedCategory);
         if (selectedPricing) params.set("pricing", selectedPricing);
 
-        const response = await fetch(`/api/tools?${params}`);
+        const response = await fetch(`/api/tools?${params}`, { cache: "no-store" });
         const data = await response.json();
         setTools(data.tools || []);
       }

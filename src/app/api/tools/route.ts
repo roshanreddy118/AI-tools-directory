@@ -3,6 +3,12 @@ import { db, tools } from "@/lib/db";
 import { eq, ilike, and, sql, desc, asc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const NO_CACHE = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -73,20 +79,23 @@ export async function GET(request: NextRequest) {
 
     const total = Number(countResult[0]?.count || 0);
 
-    return NextResponse.json({
-      tools: results,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+    return NextResponse.json(
+      {
+        tools: results,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
       },
-    });
+      { headers: NO_CACHE }
+    );
   } catch (error) {
     console.error("Error fetching tools:", error);
     return NextResponse.json(
       { error: "Failed to fetch tools" },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE }
     );
   }
 }

@@ -3,6 +3,12 @@ import { db, tools, sources, scrapeRuns } from "@/lib/db";
 import { sql, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+const NO_CACHE = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+};
 
 export async function GET() {
   try {
@@ -29,17 +35,20 @@ export async function GET() {
           .groupBy(tools.pricingType),
       ]);
 
-    return NextResponse.json({
-      totalTools: Number(toolCount[0]?.count || 0),
-      totalSources: Number(sourceCount[0]?.count || 0),
-      categories: categoryStats,
-      pricing: pricingStats,
-    });
+    return NextResponse.json(
+      {
+        totalTools: Number(toolCount[0]?.count || 0),
+        totalSources: Number(sourceCount[0]?.count || 0),
+        categories: categoryStats,
+        pricing: pricingStats,
+      },
+      { headers: NO_CACHE }
+    );
   } catch (error) {
     console.error("Error fetching stats:", error);
     return NextResponse.json(
       { error: "Failed to fetch stats" },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE }
     );
   }
 }
