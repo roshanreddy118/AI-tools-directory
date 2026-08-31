@@ -37,3 +37,6 @@ next-env.d.ts
 # scraped data
 /data/raw/
 /data/processed/
+
+# local file history (VS Code Local History extension) - may contain secrets
+/.history/

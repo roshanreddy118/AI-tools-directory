@@ -1,16 +1,28 @@
+import { neon } from "@neondatabase/serverless";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import postgres from "postgres";
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import * as schema from "../src/lib/db/schema";
 import "dotenv/config";
 
 /**
- * Seed the database with sample data for development/demo purposes
+ * Seed the database with sample data for development/demo purposes.
+ * Auto-detects Neon (serverless) vs local Postgres.
  */
+function getDb(): any {
+  const url = process.env.DATABASE_URL!;
+  if (url.includes("neon.tech") || url.includes("neon.")) {
+    const sql = neon(url);
+    return drizzleNeon(sql, { schema });
+  }
+  const sql = postgres(url);
+  return drizzlePg(sql, { schema });
+}
+
 async function main() {
   console.log("Seeding database...\n");
 
-  const sql = postgres(process.env.DATABASE_URL!);
-  const db = drizzle(sql, { schema });
+  const db = getDb();
 
   // Create sources
   const [futurepedia] = await db
@@ -205,9 +217,17 @@ async function main() {
   ];
 
   for (const tool of sampleTools) {
+    // Auto-set logo from domain
+    const toolWithLogo = {
+      ...tool,
+      logoUrl: tool.domain
+        ? `https://www.google.com/s2/favicons?domain=${tool.domain}&sz=128`
+        : null,
+    };
+
     const [inserted] = await db
       .insert(schema.tools)
-      .values(tool)
+      .values(toolWithLogo)
       .returning({ id: schema.tools.id });
 
     // Record provenance

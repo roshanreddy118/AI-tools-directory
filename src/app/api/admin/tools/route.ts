@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { slugify, extractDomain } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // allow up to 60s (Vercel Pro); Hobby plan caps at 10s
 
 function isAuthorized(request: NextRequest): boolean {
   const authHeader = request.headers.get("authorization");
@@ -71,6 +72,9 @@ export async function POST(request: NextRequest) {
       ? `https://www.google.com/s2/favicons?domain=${domain}&sz=128`
       : null;
 
+    const asArray = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+
     const [inserted] = await db
       .insert(tools)
       .values({
@@ -78,27 +82,30 @@ export async function POST(request: NextRequest) {
         slug,
         domain,
         website: website || aiData.website || null,
-        description: aiData.description,
-        shortDescription: aiData.shortDescription,
-        category: aiData.category,
-        subcategory: aiData.subcategory,
-        tags: aiData.tags,
-        pricingType: aiData.pricingType,
-        pricingDetails: aiData.pricingDetails,
-        hasFreeeTier: aiData.hasFreeTier,
-        startingPrice: aiData.startingPrice,
-        platforms: aiData.platforms,
-        features: aiData.features,
-        useCases: aiData.useCases,
-        integrations: aiData.integrations || [],
-        company: aiData.company,
-        alternatives: aiData.alternatives,
-        pros: aiData.pros,
-        cons: aiData.cons,
-        bestFor: aiData.bestFor,
+        description: aiData.description || `${name.trim()} is an AI tool.`,
+        shortDescription:
+          aiData.shortDescription ||
+          (aiData.description ? String(aiData.description).slice(0, 100) : name.trim()),
+        category: aiData.category || "Other",
+        subcategory: aiData.subcategory || null,
+        tags: asArray(aiData.tags),
+        pricingType: aiData.pricingType || null,
+        pricingDetails: aiData.pricingDetails || null,
+        hasFreeeTier: Boolean(aiData.hasFreeTier),
+        startingPrice: aiData.startingPrice || null,
+        platforms: asArray(aiData.platforms),
+        features: asArray(aiData.features),
+        useCases: asArray(aiData.useCases),
+        integrations: asArray(aiData.integrations),
+        company: aiData.company || null,
+        alternatives: asArray(aiData.alternatives),
+        pros: asArray(aiData.pros),
+        cons: asArray(aiData.cons),
+        bestFor: aiData.bestFor || null,
         githubUrl: aiData.githubUrl || null,
         twitterUrl: aiData.twitterUrl || null,
         logoUrl,
+        popularity: 50, // default so new tools appear mid-list, not buried at 0
         isVerified: false,
         isActive: true,
         lastEnrichedAt: new Date(),
@@ -156,64 +163,65 @@ export async function GET(request: NextRequest) {
  * Step 1: Search the web to get real information about the tool
  */
 async function searchForTool(name: string, website: string | null): Promise<string> {
-  try {
-    // Try to fetch the tool's website if provided
-    let websiteContent = "";
-    if (website) {
-      try {
-        const res = await fetch(website, {
-          headers: { "User-Agent": "AIToolsDirectory/1.0" },
-          signal: AbortSignal.timeout(5000),
-        });
-        if (res.ok) {
-          const html = await res.text();
-          // Extract text content (strip HTML tags), limit to 2000 chars
-          websiteContent = html
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 2000);
-        }
-      } catch {
-        // Website fetch failed, continue without it
-      }
+  // Run website fetch and search in PARALLEL with short timeouts so we
+  // never blow past the serverless function limit.
+  const fetchWebsite = async (): Promise<string> => {
+    if (!website) return "";
+    try {
+      const res = await fetch(website, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; AIToolsDirectory/1.0)" },
+        signal: AbortSignal.timeout(3500),
+      });
+      if (!res.ok) return "";
+      const html = await res.text();
+      return html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 1500);
+    } catch {
+      return "";
     }
+  };
 
-    // Also do a simple search by fetching from DuckDuckGo lite (no API key needed)
-    let searchContent = "";
+  const fetchSearch = async (): Promise<string> => {
     try {
       const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(name + " AI tool")}`;
       const res = await fetch(searchUrl, {
-        headers: { "User-Agent": "AIToolsDirectory/1.0" },
-        signal: AbortSignal.timeout(5000),
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; AIToolsDirectory/1.0)" },
+        signal: AbortSignal.timeout(3500),
       });
-      if (res.ok) {
-        const html = await res.text();
-        // Extract search result snippets
-        const snippets = html
-          .match(/class="result__snippet"[^>]*>(.*?)<\/a>/gi)
-          ?.map((s) => s.replace(/<[^>]+>/g, "").trim())
-          ?.slice(0, 5)
-          ?.join("\n");
-        searchContent = snippets || "";
-      }
+      if (!res.ok) return "";
+      const html = await res.text();
+      const snippets = html
+        .match(/class="result__snippet"[^>]*>(.*?)<\/a>/gi)
+        ?.map((s) => s.replace(/<[^>]+>/g, "").trim())
+        ?.slice(0, 5)
+        ?.join("\n");
+      return snippets || "";
     } catch {
-      // Search failed, continue without it
+      return "";
     }
+  };
 
-    const context = [
-      websiteContent ? `WEBSITE CONTENT:\n${websiteContent}` : "",
-      searchContent ? `SEARCH RESULTS:\n${searchContent}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+  const [websiteContent, searchContent] = await Promise.all([
+    fetchWebsite(),
+    fetchSearch(),
+  ]);
 
-    return context || "No web data found. Use your knowledge but be conservative — if unsure, say null.";
-  } catch {
-    return "No web data found. Use your knowledge but be conservative — if unsure, say null.";
-  }
+  const context = [
+    websiteContent ? `WEBSITE CONTENT:\n${websiteContent}` : "",
+    searchContent ? `SEARCH RESULTS:\n${searchContent}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return (
+    context ||
+    "No web data was retrieved. Use your own knowledge of this tool to fill in the profile as accurately as you can; use null only for fields you truly cannot determine."
+  );
 }
 
 /**
@@ -287,10 +295,40 @@ Return ONLY valid JSON. No markdown fences.`;
       return null;
     }
 
-    const jsonStr = content.replace(/```json?\n?/g, "").replace(/```\n?/g, "").trim();
-    return JSON.parse(jsonStr);
+    return parseProfileJson(content);
   } catch (error) {
     console.error("AI profile generation failed:", error);
     return null;
   }
+}
+
+/**
+ * Robustly extract a JSON object from the model output. The model sometimes
+ * adds markdown fences or extra prose, so we grab the first {...} block.
+ */
+function parseProfileJson(content: string): any | null {
+  // 1. Strip markdown fences
+  const cleaned = content.replace(/```json?/gi, "").replace(/```/g, "").trim();
+
+  // 2. Try direct parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // continue
+  }
+
+  // 3. Extract the outermost {...} block
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first !== -1 && last !== -1 && last > first) {
+    const candidate = cleaned.slice(first, last + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // continue
+    }
+  }
+
+  console.error("Could not parse AI JSON. Raw content:", content.slice(0, 300));
+  return null;
 }

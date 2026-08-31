@@ -8,12 +8,12 @@ import {
   Globe,
   Github,
   Twitter,
-  ArrowLeft,
   Check,
   X,
   Layers,
 } from "lucide-react";
 import Link from "next/link";
+import { BackButton } from "@/components/BackButton";
 
 interface PageProps {
   params: { slug: string };
@@ -48,13 +48,7 @@ export default async function ToolPage({ params }: PageProps) {
       {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </Link>
+          <BackButton />
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-md bg-gray-900 flex items-center justify-center">
               <Layers className="w-3.5 h-3.5 text-white" />
