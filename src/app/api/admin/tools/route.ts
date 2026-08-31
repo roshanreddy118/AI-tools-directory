@@ -47,16 +47,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Search the web for real information about this tool
+    // Step 1: Search the web for real information (best-effort, never blocks).
+    // Capped tightly so we stay within serverless limits.
     const webContext = await searchForTool(name, website || null);
 
-    // Step 2: AI generates profile using real web data as context
+    // Step 2: AI generates profile using web data + its own knowledge
     const aiData = await generateToolProfile(name, website || null, webContext);
 
     if (!aiData) {
       return NextResponse.json(
-        { error: "AI enrichment failed. Try again." },
-        { status: 500 }
+        { error: "AI enrichment failed — the AI service did not respond in time. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    // Guard: never insert an empty tool. Require at least a real description.
+    if (!aiData.description || String(aiData.description).trim().length < 15) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not generate enough information for this tool. Try adding the website URL, or try again.",
+        },
+        { status: 422 }
       );
     }
 
@@ -170,7 +182,7 @@ async function searchForTool(name: string, website: string | null): Promise<stri
     try {
       const res = await fetch(website, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; AIToolsDirectory/1.0)" },
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(2000),
       });
       if (!res.ok) return "";
       const html = await res.text();
@@ -191,7 +203,7 @@ async function searchForTool(name: string, website: string | null): Promise<stri
       const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(name + " AI tool")}`;
       const res = await fetch(searchUrl, {
         headers: { "User-Agent": "Mozilla/5.0 (compatible; AIToolsDirectory/1.0)" },
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(2000),
       });
       if (!res.ok) return "";
       const html = await res.text();
@@ -235,15 +247,16 @@ async function generateToolProfile(
   const AI_URL = process.env.AI_BASE_URL || "https://ai-server-lime.vercel.app/api/chat";
   const AI_KEY = process.env.AI_API_KEY || "my-super-secret-key-change-me";
 
-  const prompt = `Generate a JSON profile for the AI tool "${name}"${website ? ` (${website})` : ""}.
+  const prompt = `Generate a complete JSON profile for the AI tool "${name}"${website ? ` (${website})` : ""}.
 
-IMPORTANT: Use ONLY the following real web data to create the profile. Do NOT make up information. If something isn't clear from the data, use null.
+Use the web data below as your primary, most-trusted source. Where the web data is thin or missing, fall back to your own knowledge of this tool to fill in every field as accurately as you can. Always produce a real description and category — do not leave the core fields null.
 
+WEB DATA:
 ${webContext.slice(0, 1500)}
 
 ---
 
-Return a JSON object with these fields (use null if unknown):
+Return a JSON object with these fields (use null only for fields you genuinely cannot determine, but description, shortDescription and category must always be filled):
 - website (string or null)
 - description (2-3 sentences based on real data)
 - shortDescription (under 100 chars)
@@ -281,6 +294,8 @@ Return ONLY valid JSON. No markdown fences.`;
         max_tokens: 3000,
         temperature: 0.2,
       }),
+      // Fail cleanly instead of hanging until the serverless function is killed
+      signal: AbortSignal.timeout(20000),
     });
 
     if (!response.ok) {
